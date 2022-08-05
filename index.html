@@ -73,7 +73,6 @@
         matomoUrl = matomoUrl.replace("https://","");
         matomoUrl = "https://" + matomoUrl + "/?module=API&method=Live.getLastVisitsDetails&idSite=1&period=day&date=last" + daysToPull + "&format=JSON&token_auth=" + matomoApiKey;
 
-
         return $.ajax({
             type: "GET",
             url: matomoUrl,
@@ -96,15 +95,18 @@
 
         if(item.actionDetails.length > 0) {
             for (const actionDetailsKey in item.actionDetails) {
-                if(item.actionDetails[actionDetailsKey].type === "event") {
+
+                if(item.actionDetails[actionDetailsKey].type == "event") {
 
                     const userId = item.userId == null ? item.visitorId : item.userId;
+                    const a = item.actionDetails[actionDetailsKey]
+                    const userResponse = a.eventName == null ? a.eventValue : a.eventName;
                     t.row.add([
                         "" + item.lastActionDateTime,
                         "" + userId,
                         "" + item.actionDetails[actionDetailsKey].eventCategory,
                         "" + item.actionDetails[actionDetailsKey].eventAction,
-                        "" + item.actionDetails[actionDetailsKey].eventValue,
+                        "" + userResponse,
                     ]).draw(false);
                 }
             }
@@ -117,9 +119,12 @@
 
         $('#example').on( 'error.dt', function ( e, settings, techNote, message ) {
             console.log( 'An error has been reported by DataTables: ', message );
-        } ) .DataTable();
+        });
 
-        t = $('#example').dataTable();
+        t = $('#example').DataTable({
+            "aLengthMenu": [ [100, 200, -1], [100, 200, "All"] ],
+            "iDisplayLength" : 200,
+        });
 
         $('#matomoPullButton').on('click', function () {
             getMatomoData();
