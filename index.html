@@ -5,26 +5,54 @@
     <title>matomo event viewer</title>
 
     <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/dt/dt-1.12.1/datatables.min.css"/>
-
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script type="text/javascript" src="https://cdn.datatables.net/v/dt/dt-1.12.1/datatables.min.js"></script>
     <style>
+        h1 { border-bottom: solid 1px #ccc; }
+        h2 { border-bottom: solid 1px #ccc; }
         input { padding: 3px; }
         #matomoUrl { width: 200px; }
         #apikey { width: 200px; }
+        #pulldays{ width:40px; }
+        #matomoPullButton { border: solid 2px darkgreen; background-color:white; padding: 4px 25px; font-weight: bold; }
     </style>
+
+<!--
+MIT License
+
+Copyright (c) 2022 Steve Zazeski
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+ -->
+
 </head>
 <body>
 
 <form style="padding: 1rem; background: #eee;">
-    Pull events from matomo site:
+    Pull events from matomo server:
     <input id="matomoUrl" placeholder="*.matomo.cloud"/>
     api key:
     <input id="apikey" type="password"/>
-    number of days to pull:
-    <input id="pulldays" placeholder="30" value="30" type="number" style="width:35px"/>
-    <input value="Pull" id="matomoPullButton" type="button" />
+    number of days:
+    <input id="pulldays" placeholder="30" value="30" type="number"/>
     <input value="Reset" id="matomoClearButton" type="button" />
+    <input value="Pull" id="matomoPullButton" type="button" />
 </form>
 
 <h1>Matomo Events</h1>
@@ -50,6 +78,12 @@
     </tfoot>
 </table>
 
+<h2>Replacements</h2>
+<p></p>
+<input type="button" id="saveReplacementsButton" value="Save"/>
+<textarea id="replacements" style="width: 99%; padding: 4px; font-family: sans-serif; height: 5em;">
+</textarea>
+
 <script>
     let matomoUrlElement = document.getElementById("matomoUrl");
     matomoUrlElement.value = localStorage.getItem("matomoUrl");
@@ -57,6 +91,8 @@
     matomoTokenElement.value = localStorage.getItem("matomoApiKey");
     let matomoDaysToPull = document.getElementById('pulldays');
     matomoDaysToPull.value = localStorage.getItem("daysToPull");
+    let replacementsTextarea = document.getElementById("replacements");
+    replacementsTextarea.value = localStorage.getItem("replacements");
 
     var results;
     var t;
@@ -65,13 +101,14 @@
         let matomoUrl = matomoUrlElement.value;
         let matomoApiKey = matomoTokenElement.value;
         let daysToPull = matomoDaysToPull.value;
+        let matomoIdSite = 1;
 
         localStorage.setItem("matomoUrl", matomoUrl);
         localStorage.setItem("matomoApiKey", matomoApiKey);
         localStorage.setItem("daysToPull", daysToPull);
 
         matomoUrl = matomoUrl.replace("https://","");
-        matomoUrl = "https://" + matomoUrl + "/?module=API&method=Live.getLastVisitsDetails&idSite=1&period=day&date=last" + daysToPull + "&format=JSON&token_auth=" + matomoApiKey;
+        matomoUrl = "https://" + matomoUrl + "/?module=API&method=Live.getLastVisitsDetails&idSite=" + matomoIdSite + "&period=day&date=last" + daysToPull + "&format=JSON&token_auth=" + matomoApiKey;
 
         return $.ajax({
             type: "GET",
@@ -102,15 +139,41 @@
                     const a = item.actionDetails[actionDetailsKey]
                     const userResponse = a.eventName == null ? a.eventValue : a.eventName;
                     t.row.add([
-                        "" + item.lastActionDateTime,
-                        "" + userId,
-                        "" + item.actionDetails[actionDetailsKey].eventCategory,
-                        "" + item.actionDetails[actionDetailsKey].eventAction,
-                        "" + userResponse,
+                        item.lastActionDateTime,
+                        lookupReplacement(userId),
+                        lookupReplacement(item.actionDetails[actionDetailsKey].eventCategory),
+                        lookupReplacement(item.actionDetails[actionDetailsKey].eventAction),
+                        lookupReplacement(userResponse),
                     ]).draw(false);
                 }
             }
         }
+    }
+
+    function clearDatatable() {
+        t.clear();
+    }
+
+    const lookupTable = new Map();
+    function loadLookupTable() {
+        lookupTable.clear();
+        lookupTable.set("undefined","-");
+        const lines = replacementsTextarea.value.split('\n');
+        for (const l in lines) {
+            const values = lines[l].split(',');
+            if(values.length === 2){
+                //console.log("setting lookuptable", values[0], ">>>", values[1]);
+                lookupTable.set(values[0], values[1]);
+            }
+        }
+    }
+
+    function lookupReplacement(input){
+        const value = lookupTable.get("" + input)
+        if( value !== undefined ){
+            return value
+        }
+        return "" + input;
     }
 
     $(document).ready(function () {
@@ -127,14 +190,25 @@
         });
 
         $('#matomoPullButton').on('click', function () {
+            clearDatatable();
+            loadLookupTable();
             getMatomoData();
         });
 
         $('#matomoClearButton').on('click', function () {
-            localStorage.clear();
-            matomoUrlElement.value = "";
-            matomoTokenElement.value = "";
+            if (window.confirm("Are you sure you want to clear local storage (api key, server, replacements)?")) {
+                localStorage.clear();
+                matomoUrlElement.value = "";
+                matomoTokenElement.value = "";
+                matomoDaysToPull.value = "";
+                replacementsTextarea.value = "";
+            }
         });
+
+        $('#saveReplacementsButton').on('click', function () {
+            localStorage.setItem("replacements", replacementsTextarea.value);
+            loadLookupTable();
+        })
 
     });
 </script>
